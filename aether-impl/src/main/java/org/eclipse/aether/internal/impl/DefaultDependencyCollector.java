@@ -29,6 +29,7 @@ import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.ArtifactProperties;
 import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.collection.CollectResult;
+import org.eclipse.aether.collection.DependencyCollectionContext;
 import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.collection.DependencyGraphTransformer;
 import org.eclipse.aether.collection.DependencyManagement;
@@ -188,11 +189,17 @@ public class DefaultDependencyCollector
             ArtifactDescriptorResult descriptorResult;
             try
             {
-                ArtifactDescriptorRequest descriptorRequest = new ArtifactDescriptorRequest();
-                descriptorRequest.setArtifact( root.getArtifact() );
-                descriptorRequest.setRepositories( request.getRepositories() );
-                descriptorRequest.setRequestContext( request.getRequestContext() );
-                descriptorRequest.setTrace( trace );
+                DependencyManager manager = null;
+                if ( depManager != null )
+                {
+                    manager =
+                        depManager.deriveChildManager( new DefaultDependencyCollectionContext( session,
+                                                                                               root.getArtifact(),
+                                                                                               root,
+                                                                                               managedDependencies ) );
+                }
+                ArtifactDescriptorRequest descriptorRequest =
+                    createArtifactDescriptorRequest( request, trace, repositories, root, manager );
                 if ( isLackingDescriptor( root.getArtifact() ) )
                 {
                     descriptorResult = new ArtifactDescriptorResult( descriptorRequest );
@@ -404,7 +411,8 @@ public class DefaultDependencyCollector
             Artifact originalArtifact = dependency.getArtifact().setVersion( version.toString() );
             Dependency d = dependency.setArtifact( originalArtifact );
 
-            ArtifactDescriptorRequest descriptorRequest = createArtifactDescriptorRequest( args, repositories, d );
+            ArtifactDescriptorRequest descriptorRequest =
+                createArtifactDescriptorRequest( args.request, args.trace, repositories, d, depManager );
 
             final ArtifactDescriptorResult descriptorResult =
                 getArtifactDescriptorResult( args, results, noDescriptor, d, descriptorRequest );
@@ -581,15 +589,26 @@ public class DefaultDependencyCollector
         return child;
     }
 
-    private static ArtifactDescriptorRequest createArtifactDescriptorRequest( Args args,
+    private static ArtifactDescriptorRequest createArtifactDescriptorRequest( CollectRequest request,
+                                                                              RequestTrace trace,
                                                                               List<RemoteRepository> repositories,
-                                                                              Dependency d )
+                                                                              Dependency d,
+                                                                              DependencyManager depManager )
     {
         ArtifactDescriptorRequest descriptorRequest = new ArtifactDescriptorRequest();
         descriptorRequest.setArtifact( d.getArtifact() );
         descriptorRequest.setRepositories( repositories );
-        descriptorRequest.setRequestContext( args.request.getRequestContext() );
-        descriptorRequest.setTrace( args.trace );
+        descriptorRequest.setRequestContext( request.getRequestContext() );
+        descriptorRequest.setTrace( trace );
+        // derive child manager, since POM dependencies are removed one level from actual dependency
+        if ( depManager != null )
+        {
+            descriptorRequest.setDependencyManager( depManager.deriveChildManager( new DefaultDependencyCollectionContext(
+                                                                                                                           null,
+                                                                                                                           null,
+                                                                                                                           null,
+                                                                                                                           Collections.<Dependency>emptyList() ) ) );
+        }
         return descriptorRequest;
     }
 
